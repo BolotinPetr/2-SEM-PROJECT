@@ -1,0 +1,189 @@
+#include < winsock2.h > 
+#include < ws2tcpip.h >
+#include < iostream >
+#include < fstream > 
+#include < fcntl.h >
+using namespace std;
+#pragma comment(lib, "Ws2_32.lib")
+#define DEFAULT_BUFLEN 100
+#define DEFAULT_PORT "27015"
+void analyseBuf(char * buf)// функция для обработки того, что прислал бот. 
+{
+	
+	cout << "recived buf:" << buf << endl;
+	char buf2[DEFAULT_BUFLEN] = "***Your message is received***";
+	if (buf[0] == '1')
+	{
+		char buf2[DEFAULT_BUFLEN] = "***Your message is received***";
+		for (int i = 0; i < 32; i++)
+			buf[i] = buf2[i];		
+	}
+}
+int acceptData(int listenSocket, int ClientSocket, char* recvbuf, int recvbuflen, int iResult, int iSendResult)
+{
+
+	int command;
+	char sendbuf[DEFAULT_BUFLEN];	
+	sendbuf[0] = '0';
+	iSendResult = send(ClientSocket, sendbuf, 1, 0);
+	if (iSendResult == SOCKET_ERROR)
+	{
+		std::cout << "Send failed with error: " << WSAGetLastError();
+		closesocket(ClientSocket);
+		//WSACleanup();
+		return 1;
+	}
+	
+	ofstream fout("cppstudio.txt", ios::app);
+	do
+	{
+		iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);  // Принимаем данные от клиента
+		if (iResult > 0)
+		{
+			fout << recvbuf;
+			fout.close();
+			fout.open("cppstudio.txt", ios::app);
+		}
+		else if (iResult == 0)
+			std::cout << "\nConnection closed..." << std::endl;
+		else
+		{
+			std::cout << "Error recv " << WSAGetLastError();
+			closesocket(ClientSocket);
+			//WSACleanup();
+			return 1;
+		}
+		iSendResult = send(ClientSocket, sendbuf, 1, 0);
+		cout << "Do you want to continue? Yes - 1, No - 0, 2 - reconnect" << endl;
+		cin >> command;
+		if (command == 1)
+		{
+			sendbuf[0] = '0';
+		}
+		if (command == 0)
+		{
+			sendbuf[0] = '1';
+			iResult = -1;
+		}
+		if (command == 2)
+		{
+			closesocket(ClientSocket);
+			return 0;
+		}
+		iSendResult = send(ClientSocket, sendbuf, 1, 0);
+	} while (iResult > 0);
+	return 0;
+}
+int sendMessage(int listenSocket, int ClientSocket, char* recvbuf, int recvbuflen, int iResult, int iSendResult)
+{
+	iSendResult = send(ClientSocket, recvbuf, 1, 0);
+	if (iSendResult == SOCKET_ERROR)
+	{
+		std::cout << "Send failed with error: " << WSAGetLastError();
+		closesocket(ClientSocket);
+		WSACleanup();
+		return 1;
+	}
+	return 0;
+}
+
+int main()
+{
+	int exit = 0;
+	int command;
+	char recvbuf[DEFAULT_BUFLEN];
+	int iSendResult=1;
+	int recvbuflen = DEFAULT_BUFLEN;
+	int resultCounter = 0;
+	int iResult;
+	char ipstr[20];
+	WSAData d;
+	iResult = WSAStartup(MAKEWORD(2, 2), &d);
+	ofstream fout("cppstudio.txt", ios::app); // создаём объект класса ofstream для записи и связываем его с файлом cppstudio.txt
+		
+	if (iResult != 0)
+	{
+		std::cout << "Error at WSAStartup: " << iResult;
+		return 1;
+	}
+	
+	struct addrinfo *result = NULL, *ptr = NULL, hints;
+	ZeroMemory(&hints, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_flags = AI_PASSIVE;
+
+	iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &result);
+	if (iResult != 0)
+	{
+		std::cout << "Ошибка getaddrinfo: " << iResult;
+		WSACleanup();
+		return 1;
+	}
+	inet_ntop(result->ai_family, result->ai_addr, ipstr, sizeof ipstr);
+	cout << "ip = "<< ipstr;
+	SOCKET listenSocket = INVALID_SOCKET;
+	listenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+	if (listenSocket == INVALID_SOCKET)
+	{
+		std::cout << "Error at socket(): " << WSAGetLastError();
+		freeaddrinfo(result);
+		WSACleanup();
+		return 1;
+	}
+	iResult = bind(listenSocket, result->ai_addr, result->ai_addrlen);
+	if (iResult == SOCKET_ERROR)
+	{
+		std::cout << "Bind failed with error: " << WSAGetLastError();
+		freeaddrinfo(result);
+		closesocket(listenSocket);
+		WSACleanup();
+		return 1;
+	}
+
+	freeaddrinfo(result);
+	if (listen(listenSocket, 100) == SOCKET_ERROR)
+	{
+		std::cout << "Listen failed with error: " << WSAGetLastError();
+		closesocket(listenSocket);
+		WSACleanup();
+		return 1;
+	}
+	SOCKET ClientSocket;
+
+	ClientSocket = INVALID_SOCKET;
+
+	while (exit == 0)
+	{
+		ClientSocket = accept(listenSocket, NULL, NULL);
+		if (ClientSocket == INVALID_SOCKET)
+		{
+			std::cout << "Accept failed with error: " << WSAGetLastError();
+			closesocket(listenSocket);
+			WSACleanup();
+			return 1;
+		}
+		cout << endl <<"If you want recive the date - press 1" << endl << "if you want to switch off bot - press 0" <<endl << "reconnect - 2"<<endl;
+		cin >> command;
+		if (command == 1)
+		{
+			acceptData(listenSocket, ClientSocket, recvbuf, recvbuflen, iResult, iSendResult);
+		}
+		if (command == 0)
+		{
+			recvbuf[0] = '1';
+			sendMessage(listenSocket, ClientSocket, recvbuf, recvbuflen, iResult, iSendResult);
+			closesocket(ClientSocket);
+		}
+		if (command == 2)
+		{
+			recvbuf[0] = '2';
+			sendMessage(listenSocket, ClientSocket, recvbuf, recvbuflen, iResult, iSendResult);
+			closesocket(ClientSocket);			
+		}
+	}
+	
+	fout.close();
+	system("pause");
+}
